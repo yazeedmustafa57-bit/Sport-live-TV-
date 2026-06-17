@@ -682,14 +682,20 @@ let currentHls = null;
 let currentPlayerChannel = null;
 let currentServerIndex = 0;
 let proxyEnabled = false;
+let autoRetryTimer = null;
+let serverFailCount = 0;
 const PROXY_URL = 'https://proxy.valhallastream.dpdns.org/m3u8-proxy?url=';
+const AUTO_RETRY_DELAY = 4000;
+const MAX_AUTO_RETRIES = 5;
+const serverMemory = {};
 
 // =============================================================================
 // PLAYER FUNCTIONS
 // =============================================================================
 function destroyPlayer() {
+  if (autoRetryTimer) { clearTimeout(autoRetryTimer); autoRetryTimer = null; }
   if (currentHls) {
-    currentHls.destroy();
+    try { currentHls.destroy(); } catch(e) {}
     currentHls = null;
   }
   const v = document.getElementById('playerVideo');
@@ -698,6 +704,7 @@ function destroyPlayer() {
   if (f) { f.style.display = 'none'; f.src = ''; }
   currentPlayerChannel = null;
   currentServerIndex = 0;
+  serverFailCount = 0;
 }
 
 function getServersForChannel(channel) {
@@ -715,6 +722,8 @@ function getServersForChannel(channel) {
   return servers;
 }
 
+var manualSelect = false;
+
 function playChannel(channel) {
   destroyPlayer();
   currentPlayerChannel = channel;
@@ -725,7 +734,6 @@ function playChannel(channel) {
   status.className = 'player-status';
   status.querySelector('span').textContent = 'Stream wird geladen...';
   
-  // Build servers
   const servers = getServersForChannel(channel);
   
   // Render server buttons
@@ -734,88 +742,177 @@ function playChannel(channel) {
   servers.forEach((s, i) => {
     const btn = document.createElement('button');
     btn.className = 'server-btn' + (i === 0 ? ' active' : '');
-    btn.textContent = s.name + (s.type === 'hls' ? ' 📺' : ' 🌐');
-    btn.onclick = () => selectServer(i, servers);
+    btn.textContent = s.name + (s.type === 'hls' ? ' TV' : ' Web');
+    btn.onclick = function() {
+      manualSelect = true;
+      selectServer(i, servers);
+    };
     sb.appendChild(btn);
   });
   
-  selectServer(0, servers);
+  // Auto-select: use remembered server or start with first
+  var startIdx = 0;
+  if (channel.id && serverMemory[channel.id] !== undefined) {
+    startIdx = serverMemory[channel.id];
+  }
+  manualSelect = false;
+  selectServer(startIdx, servers);
 }
 
 function selectServer(index, servers) {
+  if (autoRetryTimer) { clearTimeout(autoRetryTimer); autoRetryTimer = null; }
   currentServerIndex = index;
-  serverButtons.querySelectorAll('.server-btn').forEach((btn, i) => {
+  serverFailCount = 0;
+  
+  var btns = document.getElementById('serverButtons').querySelectorAll('.server-btn');
+  btns.forEach(function(btn, i) {
     btn.className = 'server-btn' + (i === index ? ' active' : '');
   });
   
-  const server = servers[index];
-  if (!server) return;
+  var server = servers[index];
+  if (!server) {
+    showPlayerError('Keine weiteren Server verfuegbar.');
+    return;
+  }
   
-  const video = document.getElementById('playerVideo');
-  const iframe = document.getElementById('playerIframe');
-  const status = document.getElementById('playerStatus');
+  var video = document.getElementById('playerVideo');
+  var iframe = document.getElementById('playerIframe');
+  var status = document.getElementById('playerStatus');
   
   video.style.display = 'none';
   iframe.style.display = 'none';
   status.className = 'player-status';
-  status.querySelector('span').textContent = 'Verbinde zu ' + server.name + '...';
+  status.querySelector('span').textContent = '-> ' + server.name + ' wird geladen...';
   
   if (server.type === 'hls') {
-    loadHlsStream(server.url, video, iframe, status);
+    loadHlsStream(server.url, video, iframe, status, servers, index);
   } else {
-    loadEmbedStream(server.url, video, iframe, status);
+    loadEmbedStream(server.url, video, iframe, status, servers, index);
   }
 }
 
-function loadHlsStream(url, video, iframe, status) {
+function tryNextServer(servers, currentIdx) {
+  if (manualSelect) return;
+  var nextIdx = currentIdx + 1;
+  if (nextIdx >= servers.length) {
+    showPlayerError('Alle Server fehlgeschlagen. Spaeter erneut versuchen.');
+    return;
+  }
+  var status = document.getElementById('playerStatus');
+  status.className = 'player-status';
+  status.querySelector('span').textContent = '--> ' + servers[nextIdx].name + ' wird versucht...';
+  selectServer(nextIdx, servers);
+}
+
+function loadHlsStream(url, video, iframe, status, servers, idx) {
   video.style.display = 'block';
   
-  const finalUrl = proxyEnabled ? PROXY_URL + encodeURIComponent(url) : url;
+  var finalUrl = proxyEnabled ? PROXY_URL + encodeURIComponent(url) : url;
+  
+  var loadTimeout = setTimeout(function() {
+    if (!manualSelect) {
+      tryNextServer(servers, idx);
+    }
+  }, AUTO_RETRY_DELAY);
+  
+  function onLoadSuccess() {
+    clearTimeout(loadTimeout);
+    serverFailCount = 0;
+    status.classList.add('hidden');
+    if (currentPlayerChannel && currentPlayerChannel.id) {
+      serverMemory[currentPlayerChannel.id] = idx;
+    }
+    video.play().catch(function(e) {
+      if (e.name === 'NotAllowedError') {
+        status.querySelector('span').textContent = 'Klicke zum Abspielen';
+        status.className = 'player-status';
+        video.addEventListener('click', function() { video.play().catch(function(){}); }, {once: true});
+      }
+    });
+  }
   
   if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-    if (currentHls) currentHls.destroy();
+    if (currentHls) { try { currentHls.destroy(); } catch(e) {} }
     currentHls = new Hls({
       maxBufferLength: 30,
       maxMaxBufferLength: 60,
-      enableWorker: true
+      enableWorker: true,
+      fragLoadingTimeOut: 10000,
+      manifestLoadingTimeOut: 10000,
+      levelLoadingTimeOut: 10000
     });
     currentHls.loadSource(finalUrl);
     currentHls.attachMedia(video);
-    currentHls.on(Hls.Events.MANIFEST_PARSED, () => {
-      status.classList.add('hidden');
-      video.play().catch(function(e) {});
-    });
+    currentHls.on(Hls.Events.MANIFEST_PARSED, function() { onLoadSuccess(); });
+    currentHls.on(Hls.Events.LEVEL_LOADED, function() { clearTimeout(loadTimeout); });
     currentHls.on(Hls.Events.ERROR, function(e, data) {
       if (data.fatal) {
-        showPlayerError('Stream-Fehler. Versuche anderen Server.');
+        clearTimeout(loadTimeout);
+        serverFailCount++;
+        if (!manualSelect && serverFailCount < MAX_AUTO_RETRIES) {
+          tryNextServer(servers, idx);
+        } else {
+          showPlayerError('Stream-Fehler: ' + (data.type || 'Unbekannt'));
+        }
       }
     });
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = finalUrl;
-    video.addEventListener('loadedmetadata', function() {
-      status.classList.add('hidden');
-      video.play().catch(function(e) {});
-    });
+    video.addEventListener('loadedmetadata', function() { onLoadSuccess(); }, {once: true});
     video.addEventListener('error', function() {
-      showPlayerError('Stream-Fehler. Versuche anderen Server.');
-    });
+      clearTimeout(loadTimeout);
+      if (!manualSelect) tryNextServer(servers, idx);
+      else showPlayerError('Stream-Fehler');
+    }, {once: true});
   } else {
-    showPlayerError('HLS wird von diesem Browser nicht unterstützt.');
+    clearTimeout(loadTimeout);
+    showPlayerError('HLS nicht unterstuetzt.');
   }
 }
 
-function loadEmbedStream(url, video, iframe, status) {
+function loadEmbedStream(url, video, iframe, status, servers, idx) {
   iframe.style.display = 'block';
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-autoplay allow-popups-to-escape-sandbox');
   iframe.src = 'https:' + url + '?autoplay=1';
-  setTimeout(function() { status.classList.add('hidden'); }, 1500);
+  
+  var embedTimeout = setTimeout(function() {
+    if (!manualSelect) {
+      tryNextServer(servers, idx);
+    }
+  }, 5000);
+  
+  var loaded = false;
+  iframe.addEventListener('load', function() {
+    if (!loaded) {
+      loaded = true;
+      clearTimeout(embedTimeout);
+      serverFailCount = 0;
+      status.classList.add('hidden');
+      if (currentPlayerChannel && currentPlayerChannel.id) {
+        serverMemory[currentPlayerChannel.id] = idx;
+      }
+    }
+  }, {once: true});
+  
+  setTimeout(function() {
+    if (!loaded) {
+      loaded = true;
+      clearTimeout(embedTimeout);
+      status.classList.add('hidden');
+      if (currentPlayerChannel && currentPlayerChannel.id) {
+        serverMemory[currentPlayerChannel.id] = idx;
+      }
+    }
+  }, 2000);
+  
+  try { iframe.contentWindow && (iframe.contentWindow.open = function() { return null; }); } catch(e) {}
 }
 
 function showPlayerError(msg) {
-  const status = document.getElementById('playerStatus');
+  var status = document.getElementById('playerStatus');
   status.className = 'player-status error';
-  status.querySelector('span').textContent = '⚠️ ' + msg;
+  status.querySelector('span').textContent = '! ' + msg;
 }
-
 // =============================================================================
 // EVENT LISTENERS
 // =============================================================================
