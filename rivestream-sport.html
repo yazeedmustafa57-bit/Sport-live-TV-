@@ -379,6 +379,16 @@
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+<meta property="og:title" content="Sport Kanäle – 390 Live-Streams">
+<meta property="og:description" content="390 Sportkanäle live – Fußball, NBA, NFL, Tennis & mehr. Installierbar als App.">
+<meta property="og:image" content="https://yazeedmustafa57-bit.github.io/Sport-live-TV-/icon-512.png">
+<meta property="og:url" content="https://yazeedmustafa57-bit.github.io/Sport-live-TV-/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sport Kanäle – 390 Live-Streams">
+<meta name="twitter:description" content="390 Sportkanäle live – Fußball, NBA, NFL, Tennis & mehr.">
+<meta name="twitter:image" content="https://yazeedmustafa57-bit.github.io/Sport-live-TV-/icon-512.png">
+
 </head>
 <body>
 
@@ -434,6 +444,20 @@
     </div>
   </div>
 </div>
+
+<!-- INSTALL BANNER -->
+<div id="installBanner" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999; background:linear-gradient(135deg,#0f1923,#1a2332); border-top:1px solid var(--accent); padding:12px 20px; backdrop-filter:blur(12px); box-shadow:0 -4px 20px rgba(0,0,0,0.5);">
+  <div style="display:flex; align-items:center; gap:12px; max-width:600px; margin:0 auto;">
+    <img src="icon-192.png" alt="" style="width:48px; height:48px; border-radius:12px; flex-shrink:0;">
+    <div style="flex:1; min-width:0;">
+      <div style="color:#fff; font-weight:600; font-size:14px;">Sport Kanäle</div>
+      <div style="color:#94a3b8; font-size:12px;">390 Sportkanäle · App installieren</div>
+    </div>
+    <button id="installBtn" style="background:var(--accent); color:#000; border:none; padding:10px 20px; border-radius:10px; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap; font-family:inherit;">📲 Installieren</button>
+    <button id="closeBanner" style="background:none; border:none; color:#666; font-size:20px; cursor:pointer; padding:4px 8px;">&times;</button>
+  </div>
+</div>
+
 <footer>
   390 Sportkanäle
 </footer>
@@ -919,6 +943,68 @@ function showPlayerError(msg) {
   status.querySelector('span').textContent = '! ' + msg;
 }
 // =============================================================================
+
+// =============================================================================
+// PWA INSTALL PROMPT
+// =============================================================================
+(function() {
+  var deferredPrompt = null;
+  var installBanner = document.getElementById('installBanner');
+  var installBtn = document.getElementById('installBtn');
+  var closeBtn = document.getElementById('closeBanner');
+  
+  // Check if already installed (display-mode: standalone)
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+    return; // Already installed as app
+  }
+  
+  // Listen for the beforeinstallprompt event
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBanner.style.display = 'block';
+  });
+  
+  // Install button click
+  if (installBtn) {
+    installBtn.addEventListener('click', function() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function(choiceResult) {
+          if (choiceResult.outcome === 'accepted') {
+            console.log('App installed');
+            installBanner.style.display = 'none';
+          }
+          deferredPrompt = null;
+        });
+      } else {
+        // Fallback: show instructions
+        alert('App installieren:\n\nChrome: Menue -> "App installieren"\nSafari: Teilen -> "Zum Home-Bildschirm"');
+      }
+    });
+  }
+  
+  // Close banner
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function() {
+      installBanner.style.display = 'none';
+    });
+  }
+  
+  // Also show banner after 10s even without beforeinstallprompt (for iOS/other browsers)
+  setTimeout(function() {
+    if (installBanner && installBanner.style.display !== 'block') {
+      installBanner.style.display = 'block';
+    }
+  }, 10000);
+  
+  // Fix installBtn text for iOS
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (isIOS && installBtn) {
+    installBtn.textContent = '📲 App laden';
+  }
+})();
+
 // EVENT LISTENERS
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {

@@ -3,13 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sport Live TV</title>
-<meta http-equiv="refresh" content="0; url=rivestream-sport.html">
+<title>Sport Kanäle – Live-Streams</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0e17">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta property="og:title" content="Sport Kanäle – 390 Live-Streams">
+<meta property="og:description" content="390 Sportkanäle live – Fußball, NBA, NFL, Tennis & mehr. Installierbar als App.">
+<meta property="og:image" content="https://yazeedmustafa57-bit.github.io/Sport-live-TV-/icon-512.png">
+<meta property="og:url" content="https://yazeedmustafa57-bit.github.io/Sport-live-TV-/">
+<meta name="twitter:card" content="summary_large_image">
+<meta http-equiv="refresh" content="1; url=rivestream-sport.html">
 <style>
-  body { background: #0a0e17; color: #22d3ee; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; }
+  body { margin:0; background:#0a0e17; color:#22d3ee; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; text-align:center; padding:20px; }
+  img { width:80px; height:80px; border-radius:16px; margin-bottom:16px; }
+  h1 { font-size:20px; font-weight:700; margin:0 0 8px; color:#f1f5f9; }
+  p { color:#94a3b8; font-size:14px; margin:0 0 24px; }
+  .spinner { width:24px; height:24px; border:3px solid #1e293b; border-top-color:#22d3ee; border-radius:50%; animation:spin 1s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  a { color:#22d3ee; }
 </style>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+</script>
 </head>
 <body>
-  <p>Weiterleitung zu <a href="rivestream-sport.html" style="color:#22d3ee;">den Sportkanälen</a>...</p>
+  <img src="icon-192.png" alt="">
+  <h1>Sport Kanäle</h1>
+  <p>390 Sportkanäle live</p>
+  <div class="spinner"></div>
+  <p style="margin-top:24px;font-size:12px;color:#64748b;">Weiterleitung zu den Streams...</p>
 </body>
 </html>
