@@ -2,6 +2,8 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; frame-src *; child-src *; popup-blocker:">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RiveStream – Sportkanäle</title>
 <style>
@@ -415,7 +417,7 @@
         <span>Stream wird geladen...</span>
       </div>
       <video id="playerVideo" controls autoplay playsinline></video>
-      <iframe id="playerIframe" allow="autoplay; encrypted-media; fullscreen" style="display:none;"></iframe>
+      <iframe id="playerIframe" allow="autoplay; encrypted-media; fullscreen" style="display:none;" sandbox="allow-scripts allow-same-origin allow-forms allow-autoplay"></iframe>
     </div>
     <div class="server-bar" id="serverBar">
       <label>Server:</label>
@@ -432,6 +434,96 @@
 </footer>
 
 <script>
+
+// =============================================================================
+// AD & POPUP BLOCKER
+// =============================================================================
+(function blockAds() {
+  // Block window.open from iframes
+  const originalOpen = window.open;
+  window.open = function() {
+    console.warn('[AdBlock] Popup blocked');
+    return null;
+  };
+
+  // Override document.write in iframes to prevent ad injection
+  const originalWrite = document.write;
+  
+  // Periodic cleanup: remove common ad elements
+  setInterval(function() {
+    // Remove elements with common ad classes/IDs
+    const adSelectors = [
+      '[id*="google_ads"]', '[id*="ad-"]', '[id*="ads"]',
+      '[class*="ads"]', '[class*="ad-"]', '[class*="advert"]',
+      '[class*="banner"]', '[id*="banner"]',
+      'ins.adsbygoogle', 'div[data-ad]',
+      'iframe[src*="doubleclick"]', 'iframe[src*="adservice"]',
+      'iframe[src*="popunder"]', 'iframe[src*="popup"]',
+      '[id*="popup"]', '[class*="popup"]',
+      'div[style*="z-index: 9999"]', 'div[style*="z-index: 999"]',
+      // Common ad networks
+      'iframe[src*="propeller"]', 'iframe[src*="exoclick"]',
+      'iframe[src*="adf.ly"]', 'iframe[src*="shortlink"]',
+    ];
+    
+    adSelectors.forEach(function(selector) {
+      document.querySelectorAll(selector).forEach(function(el) {
+        if (el.closest('.player-container') || el.closest('.player-overlay')) {
+          el.remove();
+          console.warn('[AdBlock] Removed ad element:', selector);
+        }
+      });
+    });
+  }, 2000);
+  
+  // Block new windows/tabs from iframe clicks
+  window.addEventListener('click', function(e) {
+    var target = e.target;
+    if (target && target.tagName === 'A' && target.target === '_blank') {
+      if (target.closest('.player-overlay') || target.closest('#playerIframe')) {
+        e.preventDefault();
+        console.warn('[AdBlock] New tab blocked');
+      }
+    }
+  }, true);
+  
+  // MutationObserver to catch dynamically injected ads in player area
+  var playerObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      mutation.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1) {
+          var el = node;
+          // Check if inside player area
+          if (el.closest && el.closest('.player-overlay')) {
+            var tag = el.tagName.toLowerCase();
+            var src = el.src || '';
+            var id = el.id || '';
+            var cls = el.className || '';
+            var adKeywords = ['ad', 'ads', 'popup', 'banner', 'sponsor', 'promo', 'overlay', 'modal'];
+            var isAd = adKeywords.some(function(k) {
+              return id.toLowerCase().includes(k) || 
+                     (typeof cls === 'string' && cls.toLowerCase().includes(k)) ||
+                     src.toLowerCase().includes(k);
+            });
+            if (isAd || (tag === 'iframe' && !src.includes('dlhd') && !src.includes('dlstream'))) {
+              el.remove();
+              console.warn('[AdBlock] Removed injected ad in player');
+            }
+          }
+        }
+      });
+    });
+  });
+  
+  // Start observing after DOM is ready
+  if (document.body) {
+    playerObserver.observe(document.body, { childList: true, subtree: true });
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      playerObserver.observe(document.body, { childList: true, subtree: true });
+    });
+  }
+})();
 // =============================================================================
 // STREAM URL MAP
 // =============================================================================
